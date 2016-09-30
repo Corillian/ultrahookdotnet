@@ -1,0 +1,35 @@
+﻿<Window x:Class="UltraHookProxy.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UltraHookProxy"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="350" Width="525">
+    
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <DockPanel LastChildFill="True">
+            <TextBlock Text="Connections:" DockPanel.Dock="Top"/>
+            <ListView Name="m_viewEntries" Height="Auto" VerticalAlignment="Stretch" SelectionChanged="m_viewEntries_SelectionChanged" SelectionMode="Single">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="Subdomain" Width="100" DisplayMemberBinding="{Binding Path=Subdomain}"/>
+                        <GridViewColumn Header="Destination" Width="150" DisplayMemberBinding="{Binding Path=Destination}"/>
+                        <GridViewColumn Header="Key" Width="150" DisplayMemberBinding="{Binding Path=Key}"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+        </DockPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Vertical" Margin="10,0,0,0">
+            <Button Content="Add" Width="75" Click="AddConnection_Click"/>
+            <Button Name="m_btnRemove" IsEnabled="False" Content="Remove" Margin="0,5,0,0" Click="Remove_Click"/>
+            <Button Name="m_btnEdit" IsEnabled="False" Content="Edit" Margin="0,5,0,0" Click="Edit_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
