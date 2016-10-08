@@ -25,6 +25,10 @@ namespace UltraHook
 		const string InitUrl = "http://www.ultrahook.com/init";
 
 		static readonly HttpClient m_globalClient = new HttpClient();
+		static readonly HttpClient m_streamClient = new HttpClient()
+		{
+			Timeout = TimeSpan.FromMilliseconds(Timeout.Infinite)
+		};
 
 		object m_lock = new object();
 		CancellationTokenSource m_cancelSrc;
@@ -142,29 +146,6 @@ namespace UltraHook
 					streamUrl = new Uri((string)json.url);
 					nameSpace = json["namespace"];
 				}
-
-				//HttpWebRequest initRequest = (HttpWebRequest)HttpWebRequest.Create(InitUrl);
-				//initRequest.Method = "POST";
-				//initRequest.ContentType = "application/x-www-form-urlencoded";
-
-				//byte[] content = Encoding.UTF8.GetBytes($"key={WebUtility.UrlEncode(this.Key)}&host={WebUtility.UrlEncode(this.Subdomain)}&version=0.1.4");
-
-				//using(var request = await initRequest.GetRequestStreamAsync().ConfigureAwait(false))
-				//{
-				//	await request.WriteAsync(content, 0, content.Length).ConfigureAwait(false);
-				//}
-
-				//using(var response = await initRequest.GetResponseAsync().ConfigureAwait(false))
-				//{
-				//	using(var responseStream = new StreamReader(response.GetResponseStream()))
-				//	{
-				//		var jsonStr = await responseStream.ReadToEndAsync().ConfigureAwait(false);
-				//		dynamic json = Newtonsoft.Json.JsonConvert.DeserializeObject(jsonStr);
-
-				//		streamUrl = new Uri((string)json.url);
-				//		nameSpace = json["namespace"];
-				//	}
-				//}
 			}
 			catch(Exception ex)
 			{
@@ -177,6 +158,14 @@ namespace UltraHook
 
 				throw;
 			}
+
+			var sp = ServicePointManager.FindServicePoint(new Uri(streamUrl.GetComponents(UriComponents.Scheme | UriComponents.Host, UriFormat.UriEscaped)));
+
+			System.Diagnostics.Debug.WriteLine($"Retrieved service point {sp.GetHashCode()}.");
+
+			sp.MaxIdleTime = Timeout.Infinite;
+			sp.SetTcpKeepAlive(true, 10000, 1000);
+			sp.ConnectionLimit = 20;
 
 			m_cancelSrc = new CancellationTokenSource();
 
@@ -196,7 +185,7 @@ namespace UltraHook
 				{
 					try
 					{
-						using(var responseStream = await m_globalClient.GetStreamAsync(streamUrl).ConfigureAwait(false))
+						using(var responseStream = await m_streamClient.GetStreamAsync(streamUrl).ConfigureAwait(false))
 						{
 							token.Register(() =>
 							{
@@ -308,19 +297,25 @@ namespace UltraHook
 					}
 				case "request":
 					{
+						System.Diagnostics.Debug.WriteLine($"Forwarding Request: http://{this.Subdomain}.{nameSpace}.ultrahook.com -> {this.Destination}");
 
 						ThreadPool.QueueUserWorkItem(async (state) =>
 						{
 							try
 							{
+								byte[] payload = Encoding.UTF8.GetBytes((string)json.body);
+
 								UriBuilder bldr = new UriBuilder(this.Destination);
-								bldr.Path = (string)json.path;
+								bldr.Path += (string)json.path;
 								bldr.Query = (string)json.query;
 
-								HttpWebRequest req = (HttpWebRequest)HttpWebRequest.Create(bldr.Uri);
+								Uri reqUri = bldr.Uri;
+
+								HttpWebRequest req = (HttpWebRequest)HttpWebRequest.Create(reqUri);
 								req.Method = "POST";
 								req.Headers.Clear();
 								req.ServerCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
+								req.ContentLength = payload.Length;
 
 								IDynamicMetaObjectProvider headers = (IDynamicMetaObjectProvider)json.headers;
 
@@ -355,12 +350,17 @@ namespace UltraHook
 
 								using(var strm = await req.GetRequestStreamAsync().ConfigureAwait(false))
 								{
-									byte[] payload = Encoding.UTF8.GetBytes((string)json.body);
 									await strm.WriteAsync(payload, 0, payload.Length).ConfigureAwait(false);
 								}
 
-								var response = (HttpWebResponse)await req.GetResponseAsync().ConfigureAwait(false);
-								response.Dispose();
+								using(var response = (HttpWebResponse)await req.GetResponseAsync().ConfigureAwait(false))
+								{
+									using(var strm = new StreamReader(response.GetResponseStream()))
+									{
+										var str = await strm.ReadToEndAsync().ConfigureAwait(false);
+										System.Diagnostics.Debug.WriteLine($"Request http://{this.Subdomain}.{nameSpace}.ultrahook.com -> {reqUri} returned {response.StatusCode} ({(int)response.StatusCode}) with body:\n{str}\n");
+									}
+								}
 							}
 							catch(Exception ex)
 							{
